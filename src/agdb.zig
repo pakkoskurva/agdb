@@ -47,6 +47,17 @@ pub const ssi = @import("ssi.zig");
 pub const ranker = @import("ranker.zig");
 pub const rank_index = @import("rank_index.zig");
 
+pub const cloud = struct {
+    pub const apikey = @import("cloud/apikey.zig");
+    pub const tenant = @import("cloud/tenant.zig");
+    pub const registry = @import("cloud/registry.zig");
+    pub const sandbox = @import("cloud/sandbox.zig");
+    pub const ipc = @import("cloud/ipc.zig");
+    pub const process_table = @import("cloud/process_table.zig");
+    pub const router = @import("cloud/router.zig");
+    pub const registration = @import("cloud/registration.zig");
+};
+
 pub const Runtime = runtime.Runtime;
 pub const RuntimeConfig = runtime.RuntimeConfig;
 pub const RuntimeStats = runtime.RuntimeStats;
