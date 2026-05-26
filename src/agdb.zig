@@ -39,6 +39,13 @@ pub const record = @import("record.zig");
 pub const server = @import("server.zig");
 pub const cli = @import("cli.zig");
 pub const database = @import("database.zig");
+pub const types = @import("types.zig");
+pub const io = @import("io.zig");
+pub const memory = @import("memory.zig");
+pub const tensor = @import("tensor.zig");
+pub const ssi = @import("ssi.zig");
+pub const ranker = @import("ranker.zig");
+pub const rank_index = @import("rank_index.zig");
 
 pub const Runtime = runtime.Runtime;
 pub const RuntimeConfig = runtime.RuntimeConfig;
@@ -70,6 +77,17 @@ pub const RecordWriter = record.RecordWriter;
 pub const RecordReader = record.RecordReader;
 pub const Server = server.Server;
 pub const ServerConfig = server.ServerConfig;
+pub const Tensor = tensor.Tensor;
+pub const SSI = ssi.SSI;
+pub const Ranker = ranker.Ranker;
+pub const RankerConfig = ranker.RankerConfig;
+pub const RankedSegment = types.RankedSegment;
+pub const BitSet = types.BitSet;
+pub const PRNG = types.PRNG;
+pub const Fixed32_32 = types.Fixed32_32;
+pub const stableHash = io.stableHash;
+pub const RankIndex = rank_index.RankIndex;
+pub const RankIndexConfig = rank_index.RankIndexConfig;
 
 test {
     std.testing.refAllDecls(@This());
@@ -111,4 +129,11 @@ test {
     std.testing.refAllDecls(server);
     std.testing.refAllDecls(cli);
     std.testing.refAllDecls(database);
+    std.testing.refAllDecls(types);
+    std.testing.refAllDecls(io);
+    std.testing.refAllDecls(memory);
+    std.testing.refAllDecls(tensor);
+    std.testing.refAllDecls(ssi);
+    std.testing.refAllDecls(ranker);
+    std.testing.refAllDecls(rank_index);
 }

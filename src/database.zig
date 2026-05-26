@@ -170,13 +170,25 @@ pub const Database = struct {
         defer self.allocator.free(encoded);
 
         try self.kv.put(key_buf, encoded);
+        var kv_committed = true;
+        errdefer if (kv_committed) {
+            _ = self.kv.delete(key_buf) catch {};
+        };
 
         try self.bm25.addDocument(assigned_id, stored.body);
+        var bm25_committed = true;
+        errdefer if (bm25_committed) {
+            self.bm25.removeDocument(assigned_id) catch {};
+        };
+
         if (stored.embedding) |emb| {
             if (emb.len == self.config.embedding_dim) {
                 try self.vec.upsert(assigned_id, emb);
             }
         }
+
+        _ = &kv_committed;
+        _ = &bm25_committed;
 
         if (record.embedding == null and stored.embedding != null) {
             self.allocator.free(stored.embedding.?);
@@ -186,12 +198,17 @@ pub const Database = struct {
 
     pub fn putBytes(self: *Self, kind: record_mod.RecordKind, id: u64, body: []const u8, tags: []const []const u8) !u64 {
         const tag_copy = try self.allocator.alloc([]const u8, tags.len);
+        var tags_initialized: usize = 0;
         errdefer {
-            for (tag_copy) |t| self.allocator.free(t);
+            var ti: usize = 0;
+            while (ti < tags_initialized) : (ti += 1) {
+                self.allocator.free(tag_copy[ti]);
+            }
             self.allocator.free(tag_copy);
         }
         for (tags, 0..) |t, i| {
             tag_copy[i] = try self.allocator.dupe(u8, t);
+            tags_initialized = i + 1;
         }
         const body_copy = try self.allocator.dupe(u8, body);
         errdefer self.allocator.free(body_copy);

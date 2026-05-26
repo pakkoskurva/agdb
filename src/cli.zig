@@ -427,7 +427,8 @@ fn cmdList(allocator: std.mem.Allocator, opts: CliOptions) !u8 {
     var db = try openDb(allocator, opts);
     defer db.close();
     const stdout = std.io.getStdOut().writer();
-    var it = db.kv.iterator();
+    var it = try db.kv.iterator();
+    defer it.deinit();
     var emitted: u64 = 0;
     while (true) {
         var kv = (try it.next()) orelse break;

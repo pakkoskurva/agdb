@@ -213,11 +213,12 @@ pub const KvStore = struct {
             const value_offset = pos + @sizeOf(RecordHeader) + key_len;
             switch (@as(Op, @enumFromInt(rec.op))) {
                 .put => {
-                    const interned_key = try self.keys_arena.allocator().dupe(u8, key_bytes);
-                    const gop = try self.index.getOrPut(self.allocator, interned_key);
+                    const gop = try self.index.getOrPut(self.allocator, key_bytes);
                     if (gop.found_existing) {
                         self.dead_bytes += gop.value_ptr.value_len + @sizeOf(RecordHeader) + gop.value_ptr.key_len;
                     } else {
+                        const interned_key = try self.keys_arena.allocator().dupe(u8, key_bytes);
+                        gop.key_ptr.* = interned_key;
                         self.record_count += 1;
                     }
                     gop.value_ptr.* = Entry{
@@ -286,11 +287,12 @@ pub const KvStore = struct {
         const total: u64 = @sizeOf(RecordHeader) + key.len + value.len;
         const value_offset = offset + @sizeOf(RecordHeader) + key.len;
 
-        const interned_key = try self.keys_arena.allocator().dupe(u8, key);
-        const gop = try self.index.getOrPut(self.allocator, interned_key);
+        const gop = try self.index.getOrPut(self.allocator, key);
         if (gop.found_existing) {
             self.dead_bytes += gop.value_ptr.value_len + @sizeOf(RecordHeader) + gop.value_ptr.key_len;
         } else {
+            const interned_key = try self.keys_arena.allocator().dupe(u8, key);
+            gop.key_ptr.* = interned_key;
             self.record_count += 1;
         }
         gop.value_ptr.* = Entry{
@@ -395,43 +397,80 @@ pub const KvStore = struct {
         try self.file.sync();
     }
 
-    pub const Iterator = struct {
-        store: *Self,
-        inner: std.StringHashMapUnmanaged(Entry).Iterator,
-
-        pub fn next(self: *Iterator) !?KeyValue {
-            const entry = self.inner.next() orelse return null;
-            const value = try self.store.allocator.alloc(u8, entry.value_ptr.value_len);
-            errdefer self.store.allocator.free(value);
-            if (entry.value_ptr.value_len > 0) {
-                try self.store.file.seekTo(entry.value_ptr.value_offset);
-                const n = try self.store.file.readAll(value);
-                if (n < entry.value_ptr.value_len) return KvError.Corrupted;
-            }
-            return KeyValue{
-                .key = entry.key_ptr.*,
-                .value = value,
-                .allocator = self.store.allocator,
-            };
-        }
-    };
-
     pub const KeyValue = struct {
         key: []const u8,
         value: []u8,
         allocator: std.mem.Allocator,
 
         pub fn deinit(self: *KeyValue) void {
+            self.allocator.free(self.key);
             self.allocator.free(self.value);
         }
     };
 
-    pub fn iterator(self: *Self) Iterator {
+    pub const Iterator = struct {
+        items: []KeyValue,
+        index: usize,
+        allocator: std.mem.Allocator,
+
+        pub fn next(self: *Iterator) !?KeyValue {
+            if (self.index >= self.items.len) return null;
+            const item = self.items[self.index];
+            self.index += 1;
+            return item;
+        }
+
+        pub fn deinit(self: *Iterator) void {
+            var i: usize = self.index;
+            while (i < self.items.len) : (i += 1) {
+                self.allocator.free(self.items[i].key);
+                self.allocator.free(self.items[i].value);
+            }
+            self.allocator.free(self.items);
+            self.items = &[_]KeyValue{};
+            self.index = 0;
+        }
+    };
+
+    pub fn iterator(self: *Self) !Iterator {
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        const entry_count = self.index.count();
+        const items = try self.allocator.alloc(KeyValue, entry_count);
+        var produced: usize = 0;
+        errdefer {
+            var i: usize = 0;
+            while (i < produced) : (i += 1) {
+                self.allocator.free(items[i].key);
+                self.allocator.free(items[i].value);
+            }
+            self.allocator.free(items);
+        }
+
+        var it = self.index.iterator();
+        while (it.next()) |entry| {
+            const key_copy = try self.allocator.dupe(u8, entry.key_ptr.*);
+            errdefer self.allocator.free(key_copy);
+            const value_buf = try self.allocator.alloc(u8, entry.value_ptr.value_len);
+            errdefer self.allocator.free(value_buf);
+            if (entry.value_ptr.value_len > 0) {
+                try self.file.seekTo(entry.value_ptr.value_offset);
+                const n = try self.file.readAll(value_buf);
+                if (n < entry.value_ptr.value_len) return KvError.Corrupted;
+            }
+            items[produced] = KeyValue{
+                .key = key_copy,
+                .value = value_buf,
+                .allocator = self.allocator,
+            };
+            produced += 1;
+        }
+
         return Iterator{
-            .store = self,
-            .inner = self.index.iterator(),
+            .items = items,
+            .index = 0,
+            .allocator = self.allocator,
         };
     }
 
